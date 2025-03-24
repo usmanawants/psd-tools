@@ -214,6 +214,7 @@ class PSDImage(GroupMixin):
         layer_filter: Callable | None = None,
         ignore_preview: bool = False,
         apply_icc: bool = True,
+        layers: set[int] | None = None,
     ):
         """
         Composite the PSD image.
@@ -230,6 +231,7 @@ class PSDImage(GroupMixin):
         :param layer_filter: Callable that takes a layer as argument and
             returns whether if the layer is composited. Default is
             :py:func:`~psd_tools.api.layers.PixelLayer.is_visible`.
+        :param layers: Set of layer IDs to force regeneration for specific layers.
         :return: :py:class:`PIL.Image`.
         """
         from psd_tools.composite import composite_pil
@@ -243,7 +245,7 @@ class PSDImage(GroupMixin):
         ):
             return self.topil(apply_icc=apply_icc)
         return composite_pil(
-            self, color, alpha, viewport, layer_filter, force, apply_icc=apply_icc
+            self, color, alpha, viewport, layer_filter, force, apply_icc=apply_icc, layers=layers
         )
 
     def is_visible(self) -> bool:

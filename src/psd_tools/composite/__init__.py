@@ -35,6 +35,7 @@ def composite_pil(
     force: bool,
     as_layer: bool = False,
     apply_icc: bool = True,
+    layers: set[int] | None = None,
 ) -> Image.Image | None:
     UNSUPPORTED_MODES = {
         ColorMode.DUOTONE,
@@ -54,6 +55,7 @@ def composite_pil(
         layer_filter=layer_filter,
         force=force,
         as_layer=as_layer,
+        layers=layers,
     )
 
     mode = get_pil_mode(color_mode)
@@ -100,6 +102,7 @@ def composite(
     layer_filter: Callable | None = None,
     force: bool = False,
     as_layer: bool = False,
+    layers: set[int] | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Composite the given group of layers.
@@ -134,7 +137,7 @@ def composite(
 
     layer_filter = layer_filter or Layer.is_visible
 
-    compositor = Compositor(viewport, color, alpha, isolated, layer_filter, force)
+    compositor = Compositor(viewport, color, alpha, isolated, layer_filter, force, layers)
     target_group = group if isinstance(group, GroupMixin) and not as_layer else [group]
     for layer in target_group:  # type: ignore
         compositor.apply(layer)
@@ -188,11 +191,12 @@ class Compositor(object):
         isolated: bool = False,
         layer_filter: Callable | None = None,
         force: bool = False,
+        layers: set[int] | None = None,
     ):
         self._viewport = viewport
         self._layer_filter = layer_filter
         self._force = force
-        self._clip_mask = 1.0
+        self._layers = layers
 
         if isolated:
             self._alpha_0 = np.zeros((self.height, self.width, 1), dtype=np.float32)
@@ -229,6 +233,10 @@ class Compositor(object):
             logger.debug("Out of viewport %s" % (layer))
             return
         if not clip_compositing and layer.clipping_layer and layer._has_clip_target:
+            return
+
+        if self._layers and layer.layer_id not in self._layers:
+            logger.debug("Skipping layer %s not in target layers" % layer)
             return
 
         knockout = bool(layer.tagged_blocks.get_data(Tag.KNOCKOUT_SETTING, 0))

@@ -235,15 +235,20 @@ class Compositor(object):
         if not clip_compositing and layer.clipping_layer and layer._has_clip_target:
             return
 
-        if self._layers and layer.layer_id not in self._layers:
+        # Only skip non-group layers that aren't in our target set
+        # Always process groups to maintain hierarchy
+        if self._layers and not isinstance(layer, GroupMixin) and layer.layer_id not in self._layers:
             logger.debug("Skipping layer %s not in target layers" % layer)
             return
 
         knockout = bool(layer.tagged_blocks.get_data(Tag.KNOCKOUT_SETTING, 0))
         if isinstance(layer, GroupMixin):
+            # Pass the layers parameter to _get_group to maintain targeting
             color, shape, alpha = self._get_group(layer, knockout)
         else:
-            color, shape, alpha = self._get_object(layer)
+            # For non-group layers, determine if we need to force regeneration
+            force_layer = self._force or (self._layers and layer.layer_id in self._layers)
+            color, shape, alpha = self._get_object(layer, force_layer)
 
         shape_mask, opacity_mask = self._get_mask(layer)
         shape_const, opacity_const = self._get_const(layer)
@@ -353,6 +358,7 @@ class Compositor(object):
             viewport,
             layer_filter=self._layer_filter,
             force=self._force,
+            layers=self._layers, # Pass the layers parameter to maintain targeting
         )
         color = paste(self._viewport, viewport, color, 1.0)
         shape = paste(self._viewport, viewport, shape)
@@ -367,10 +373,10 @@ class Compositor(object):
         assert alpha is not None
         return color, shape, alpha
 
-    def _get_object(self, layer: Layer) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def _get_object(self, layer: Layer, force_layer: bool = False) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Get object attributes."""
         color, shape = layer.numpy("color"), layer.numpy("shape")
-        if (self._force or not layer.has_pixels()) and has_fill(layer):
+        if ((force_layer or not layer.has_pixels()) and has_fill(layer)):
             color, shape = create_fill(layer, layer.bbox)
             if shape is None:
                 shape = np.ones((layer.height, layer.width, 1), dtype=np.float32)
